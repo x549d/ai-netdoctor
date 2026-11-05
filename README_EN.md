@@ -111,3 +111,45 @@ Real-world public network connectivity depends on the user's network environment
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Diagnostic Results and Troubleshooting
+
+Each stage reports an **Explanation**, **Possible causes**, and **Suggested actions**. DNS/TCP and HTTPS are independent observations; HTTPS is attempted separately even if a preliminary check fails.
+
+### DNS: Hostname Resolution
+- **PASS — Resolved**: The checked hostname resolved to an IP address. Direct mode checks the API hostname; proxy mode checks the proxy hostname.
+- **FAIL — DNS lookup timed out**: The resolver did not answer in time. The DNS server may be unavailable, or a VPN/firewall may interfere. Check network and DNS settings; on Windows run `ipconfig /flushdns`, test with `nslookup <hostname>`, and try `--timeout 15`.
+- **FAIL — DNS lookup failed**: The OS could not resolve the hostname. Check hostname/proxy spelling and DNS filtering; inspect the result with `nslookup <hostname>`.
+
+### TCP: Port Connectivity
+- **PASS — TCP connection established**: A TCP handshake completed with the checked host and port. This does not prove HTTPS, authentication, or model access.
+- **FAIL — TCP connection failed or timed out**: DNS returned an address but TCP failed. In direct mode, inspect firewall, VPN/TUN, routing, and destination port. In proxy mode, confirm the proxy is running, its HTTP/Mixed port is correct, and the local firewall permits the connection.
+- **FAIL — TCP not attempted**: DNS returned no IP address; resolve DNS first.
+
+On Windows, test a port (replace the host and port with those in the report):
+```powershell
+Test-NetConnection api.openai.com -Port 443
+Test-NetConnection 127.0.0.1 -Port 7897
+```
+
+### HTTPS: HTTP Status Codes and Errors
+- **2xx**: A successful HTTP response was received, but this unauthenticated probe does not verify credentials, quota, permissions, or model access.
+- **301/302/3xx**: A redirect was returned and is not followed. Check the API base URL, proxy/gateway rewrite rules, and possible captive-portal login pages.
+- **400**: The endpoint rejected the probe request. Check path, method, API version, and parameters. This tool sends an unauthenticated GET; an endpoint rejecting it may still support other API requests.
+- **401**: Commonly expected because the probe intentionally sends no API key. If your own application also gets 401, verify its key and authentication header. Never share keys in public issues or reports.
+- **403**: Access was refused. Check account/project permissions, regional or IP policies, and whether the proxy/VPN egress IP is permitted.
+- **404**: The server responded, but the diagnostic path was not found. Verify the provider API base URL/version and check for proxy path rewriting; this is not a DNS failure.
+- **407**: The proxy requires authentication; target API reachability is not confirmed. Check proxy credentials, scheme, host, and port. A local Clash HTTP/Mixed listener typically uses `http://127.0.0.1:<port>`; do not use a SOCKS-only port as an HTTP proxy.
+- **429**: A rate-limit or quota policy was triggered. Check the provider dashboard, retry hints, billing, and quota; reduce request frequency before retrying.
+- **5xx**: The service or gateway returned an error. Check the provider status page and retry later. If it happens only through a proxy, inspect its upstream route and gateway.
+- **HTTPS timeout**: The request did not finish in time. Review DNS/TCP, proxy upstream routing, and firewall rules; retry with `--timeout 15` and compare direct/proxy modes only where permitted.
+- **Proxy / CONNECT error**: The proxy connection or HTTPS tunnel failed. Confirm it is listening, the URL scheme/port are correct, authentication is valid, and upstream routing works.
+- **TLS verification / handshake failed**: TLS negotiation or certificate verification failed. Check system date/time, trusted root certificates, and corporate HTTPS inspection. If your organization intercepts TLS, configure its trusted CA. **Do not disable certificate verification.**
+- **Remote protocol / other HTTPS error**: A remote server or intermediary may have reset the connection or returned an invalid response. Retry once, inspect proxy/gateway logs, and compare another network path where permitted.
+
+### Important Interpretation Notes
+1. In proxy mode, DNS/TCP checks apply to the proxy host and port; HTTPS is sent through the proxy to the target API.
+2. DNS/TCP failure does not necessarily mean HTTPS must fail; stages are reported independently.
+3. An HTTP response only proves that an HTTP endpoint responded. It does not prove API key, permissions, quota, or model inference is available.
+4. Reports contain no API keys, but may include hostnames, resolved IPs, proxy addresses, and timestamps. Redact before sharing and never expose proxy credentials.
+5. Environment proxy variables are ignored by default. Pass `--proxy` explicitly when needed.
