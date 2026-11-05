@@ -35,7 +35,7 @@ class DiagnosticTests(unittest.TestCase):
         self.assertIsNone(kwargs["proxy"])
 
     def test_proxy_scope_and_credentials_redaction(self):
-        proxy = "http://alice:secret@127.0.0.1:7897"
+        proxy = "http://proxy-user:pwd-marker-123@127.0.0.1:7897"
         result, kwargs, dns_args = self.run_probe(proxy=proxy)
         self.assertEqual(dns_args[:2], ("127.0.0.1", 7897))
         self.assertEqual(kwargs["proxy"], proxy)
@@ -67,11 +67,13 @@ class DiagnosticTests(unittest.TestCase):
         self.assertTrue(result["steps"][1]["recommended_actions"])
 
     def test_proxy_error_does_not_leak_credentials(self):
-        result, _, _ = self.run_probe(error=httpx.ProxyError("alice:secret"))
+        result, _, _ = self.run_probe(error=httpx.ProxyError("proxy-user:pwd-marker-456"))
         self.assertFalse(result["reachable"])
         self.assertIn("Proxy", result["steps"][-1]["message"])
         self.assertTrue(result["steps"][-1]["recommended_actions"])
-        self.assertNotIn("secret", json.dumps(result))
+        serialized = json.dumps(result)
+        self.assertNotIn("proxy-user", serialized)
+        self.assertNotIn("pwd-marker-456", serialized)
 
     def test_tls_failure_is_classified(self):
         error = httpx.ConnectError("certificate verify failed")
@@ -92,7 +94,7 @@ class DiagnosticTests(unittest.TestCase):
                 self.assertTrue(result["steps"][-1]["recommended_actions"])
         result, _, _ = self.run_probe(status=407)
         self.assertFalse(result["reachable"])
-        self.assertIn("Proxy authentication", result["steps"][-1]["explanation"])
+        self.assertIn("proxy requested authentication", result["steps"][-1]["explanation"].lower())
 
     def test_each_step_has_structured_guidance_fields(self):
         result, _, _ = self.run_probe(status=401)
