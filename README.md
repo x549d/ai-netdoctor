@@ -111,3 +111,45 @@ python -m pip wheel . --no-deps --wheel-dir dist
 ## License
 
 MIT，见 [LICENSE](LICENSE)。
+
+## 诊断结果详解与处理方法
+
+每个阶段都会输出 **Explanation（结果解释）**、**Possible cause（可能原因）** 和 **Suggested action（建议操作）**。DNS/TCP 与 HTTPS 是独立观察；即使前两项失败，程序仍会单独尝试 HTTPS。
+
+### DNS：域名解析
+- **PASS — Resolved**：当前检查的主机名已解析为 IP。直连模式检查 API 域名；代理模式检查代理主机名。
+- **FAIL — DNS lookup timed out**：DNS 未在等待时间内返回。可能是 DNS 服务器不可用、VPN/防火墙干扰或网络暂时异常。检查网络和 DNS；Windows 可运行 `ipconfig /flushdns`，再用 `nslookup <hostname>` 测试，并尝试 `--timeout 15`。
+- **FAIL — DNS lookup failed**：系统无法解析主机名。检查域名/代理地址拼写和 DNS 过滤策略；用 `nslookup <hostname>` 查看结果。
+
+### TCP：端口连接
+- **PASS — TCP connection established**：到检查主机和端口的 TCP 握手成功；不代表 HTTPS、认证或模型调用成功。
+- **FAIL — TCP connection failed or timed out**：DNS 有结果但 TCP 失败。直连模式检查防火墙、VPN/TUN、路由和目标端口；代理模式检查代理程序是否运行、HTTP/Mixed 端口是否正确，以及本机防火墙。
+- **FAIL — TCP not attempted**：DNS 没有返回 IP，先修复 DNS。
+
+Windows 可用以下命令检查端口（替换为报告中的主机和端口）：
+```powershell
+Test-NetConnection api.openai.com -Port 443
+Test-NetConnection 127.0.0.1 -Port 7897
+```
+
+### HTTPS：HTTP 状态码与错误
+- **2xx**：收到成功 HTTP 响应，但本工具不带 API Key，不能证明认证、额度或模型调用可用。
+- **301/302/3xx**：收到重定向，本工具不跟随。检查 API Base URL、代理/网关路径改写；若跳转到登录页，检查网络门户。
+- **400**：请求格式或端点不接受探测请求。核对路径、方法、API 版本和参数；本工具发送无认证 GET，端点不接受它不代表所有 API 调用都失败。
+- **401**：通常是预期结果，因为探测请求不携带 API Key。若自己的程序也返回 401，检查密钥是否存在/有效及认证 Header。不要把密钥发到公开 Issue 或报告。
+- **403**：服务器拒绝访问。检查账户/项目权限、区域或 IP 策略；使用代理/VPN 时核对出口 IP 是否被允许。
+- **404**：服务器有响应但探测路径不存在。核对服务商 API Base URL 和版本，并检查代理是否改写路径；这不是 DNS 故障。
+- **407**：代理要求身份验证，目标 API 是否可达尚未确认。检查代理认证、协议、地址和端口。Clash HTTP/Mixed 端口通常使用 `http://127.0.0.1:<端口>`，不要把 SOCKS-only 端口当作 HTTP 代理。
+- **429**：触发限流或额度策略。查看服务商控制台、重试提示、账单/额度，降低频率后重试。
+- **5xx**：服务端或网关错误。查看服务状态页，稍后重试；若只在代理线路出现，检查代理上游和网关。
+- **HTTPS timeout**：请求未在超时前完成。检查 DNS/TCP、代理上游和防火墙；尝试 `--timeout 15`，并在网络策略允许时比较直连和代理。
+- **Proxy / CONNECT error**：代理连接或 HTTPS 隧道失败。确认代理正在监听、URL 协议与端口正确、认证有效且上游可用。
+- **TLS verification / handshake failed**：TLS 握手或证书校验失败。检查系统日期时间、根证书和企业 HTTPS 检查设备；企业 TLS 拦截应配置组织提供的可信 CA。**不要关闭证书验证来绕过问题。**
+- **Remote protocol / other HTTPS error**：远端或中间网关可能重置连接或返回无效响应。重试一次，检查代理/网关日志，并在允许时比较其他网络路径。
+
+### 结果解读注意事项
+1. 代理模式下，DNS/TCP 检查代理主机和端口；HTTPS 才是经代理请求目标 API。
+2. DNS/TCP 失败不必然意味着 HTTPS 失败，各阶段结果独立。
+3. HTTP 响应只证明某个端点作出了响应，不证明 API Key、权限、额度或模型推理可用。
+4. 报告不含 API Key，但可能包含主机名、解析 IP、代理地址和时间。分享前请脱敏；不要暴露代理凭证。
+5. 默认忽略环境变量代理；需要代理时显式传入 `--proxy`。
