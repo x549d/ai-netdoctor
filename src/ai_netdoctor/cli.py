@@ -52,6 +52,11 @@ def main(argv=None):
             for step in report["steps"]:
                 label = "PASS" if step["ok"] else "FAIL"
                 print(f"[{label}] {step['stage'].upper()}: {step['message']} ({step['elapsed_ms']} ms)")
-            print("Result: " + ("HTTP response received; API access unverified" if report["reachable"] else "Target reachability not confirmed"))
-            print("Advice: " + report["advice"])
+                if step.get("explanation"):
+                    print(f"  Explanation: {step['explanation']}")
+                for cause in step.get("possible_causes", []):
+                    print(f"  Possible cause: {cause}")
+                for index, action in enumerate(step.get("recommended_actions", []), start=1):
+                    print(f"  Suggested action {index}: {action}")
+            print("Result: " + report["result"])
     return 0 if all(report["reachable"] for report in reports) else 1
