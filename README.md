@@ -2,154 +2,179 @@
 
 [简体中文](README.md) | [English](README_EN.md)
 
-AI NetDoctor 是一款轻量级 Python 命令行工具，用于诊断访问 AI API 时遇到的网络连接问题。当前支持 OpenAI、Claude 和 Gemini，可检查 DNS 解析、TCP 连接、HTTPS 请求以及 HTTP 代理连通性，并通过终端或 JSON 输出诊断结果。
+AI NetDoctor 是一款轻量级 Python 命令行工具，用于排查访问 OpenAI、Claude 和 Gemini API 时的网络连接问题。它检查 DNS 解析、TCP 端口连接和 HTTPS 响应，支持直连或显式指定 HTTP(S) 代理，并在终端显示逐项解释和处理建议，也可输出 JSON 报告。
 
-> 本工具只检查网络层连通性和 HTTP 响应，不验证 API Key、账户额度、权限或模型实际调用能力。
+> 无需 API Key。本工具只检查网络连通性和 HTTP 响应，不验证密钥、账户额度、权限或模型调用是否成功。
 
-## 快速开始（Windows / PowerShell）
+## 功能与检查范围
 
-安装 Python 3.10 或更高版本，解压后进入能看到 `pyproject.toml` 的 `ai-netdoctor` 目录：
+- 单独检查一个服务，或依次检查全部三个服务。
+- 分别报告 DNS、TCP、HTTPS 阶段的结果和耗时，并为异常提供可能原因与建议操作。
+- 检查 HTTP(S) 代理连接及 HTTPS CONNECT 隧道；报告中隐藏代理用户名和密码。
+- 输出终端报告或结构化 JSON，便于保存和在脚本中读取。
+
+| 命令中的服务名 | 固定 HTTPS 探测地址 |
+| --- | --- |
+| `openai` | `https://api.openai.com/v1/models` |
+| `claude` | `https://api.anthropic.com/v1/models` |
+| `gemini` | `https://generativelanguage.googleapis.com/v1beta/models` |
+
+直连时，DNS/TCP 检查目标 API 域名和 443 端口。使用代理时，DNS/TCP 检查代理主机和端口，HTTPS 再通过代理请求目标 API。HTTPS 使用不带 API Key 的 GET 请求，校验证书，不跟随重定向，也不读取响应正文。
+
+## 安装与快速开始
+
+需要 **Python 3.10 或更高版本**。在 [仓库页面](https://github.com/x549d/ai-netdoctor) 选择 **Code → Download ZIP** 并解压，或获取仓库副本，然后进入包含 `pyproject.toml` 的目录。安装需要联网下载构建依赖、HTTPX 及其依赖。
+
+### Windows / PowerShell
 
 ```powershell
 py -3 -m venv .venv
-.\\.venv\\Scripts\\python.exe -m pip install -e .
-.\\.venv\\Scripts\\ai-netdoctor.exe check openai
-.\\.venv\\Scripts\\ai-netdoctor.exe check openai --proxy http://127.0.0.1:7897
-.\\.venv\\Scripts\\ai-netdoctor.exe check --all --proxy http://127.0.0.1:7897
-.\\.venv\\Scripts\\ai-netdoctor.exe check gemini --json
-.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m pip install .
+.\.venv\Scripts\ai-netdoctor.exe check openai
 ```
 
-安装过程需要下载 HTTPX 及其依赖。代理端口请替换为自己 HTTP/Mixed 代理的实际端口。
-无需激活环境，也可用 `.\\.venv\\Scripts\\python.exe -m ai_netdoctor check openai`。
+无需激活虚拟环境。也可使用模块方式运行：
 
-macOS / Linux：
+```powershell
+.\.venv\Scripts\python.exe -m ai_netdoctor check openai
+```
+
+### macOS / Linux
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
+.venv/bin/python -m pip install .
 .venv/bin/ai-netdoctor check openai
-.venv/bin/python -m unittest discover -s tests -v
 ```
 
-## 命令
+若系统提示缺少 venv 或 pip，请先通过系统的软件包管理器安装对应的 Python 组件。
+
+## 命令与常用操作
+
+以下示例中的 `ai-netdoctor`，请替换为上方对应系统的虚拟环境可执行文件路径；已激活虚拟环境时可直接使用命令名。
 
 ```text
+ai-netdoctor --help
 ai-netdoctor --version
+ai-netdoctor check --help
 ai-netdoctor check {openai,claude,gemini} [--proxy URL] [--timeout SECONDS] [--json]
 ai-netdoctor check --all [--proxy URL] [--timeout SECONDS] [--json]
 ```
 
-默认超时 5 秒。 `--all` 顺序检查三个服务。退出码：0 表示所有目标均收到 HTTP 响应（407 除外），1 表示至少一个目标的可达性未确认，2 表示参数错误，130 表示用户中断。
-JSON 始终使用包含 `version` 和 `results` 数组的对象，便于脚本消费。
+必须选择一个服务或 `--all`，两者不能同时使用。
 
-## 如何理解结果
-
-- 直连模式：DNS / TCP 检查目标域名和 443 端口。
-- 代理模式：DNS / TCP 检查代理地址；HTTPS 通过代理向目标发出请求。
-- HTTPS 默认校验证书，使用 GET、不跟随重定向、不下载正文，不进行模型推理。
-- 401 / 403：已收到 HTTP 响应，但可能缺少认证、权限或被访问策略拦截。
-- 429：已收到 HTTP 响应，需要核对限流或额度。
-- 5xx：已收到服务或网关错误。收到响应不代表服务健康。
-- 407 或代理 CONNECT 错误：检查代理认证或隧道设置，目标 API 可达性未确认。
-- 各阶段独立观察；短暂 DNS/TCP 失败后 HTTPS 仍可能成功。
-- 中间网关也可能返回响应，因此本工具不会将 HTTP 响应等同于供应商 API 调用成功。
-
-默认显式关闭环境变量读取（`trust_env=False`），包括 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 和 HTTPX 的证书环境变量。需要代理时传入 `--proxy`。
-系统路由、VPN/TUN 和透明代理仍可能影响连接。此 MVP 不支持 SOCKS 或自定义 CA 选项。
-企业网络如有证书拦截，需要自行配置可信证书的后续扩展，不应关闭证书验证。
-
-超时是 DNS 等待、TCP 阶段与 HTTP 各操作的限制，并非整条命令的绝对总时限。
-系统原生 DNS 解析线程无法安全强制终止；极端情况下即使报告 DNS 超时，进程退出仍可能等待解析器。
-
-本程序不读取 API Key。代理 URL 可带用户名和密码，但输出会移除二者，异常也不会原样写入报告。
-报告仍含域名、解析 IP、代理地址和时间；公开前请检查是否需要脱敏。
-命令行中的代理凭证可能留在终端历史中。
-
-HTTPX 参考：[代理参数](https://www.python-httpx.org/advanced/proxies/)、[环境变量与 trust_env](https://www.python-httpx.org/environment_variables/)。
-
-## 项目结构
-
-```text
-ai-netdoctor/
-├── src/ai_netdoctor/
-│   ├── __init__.py
-│   ├── __main__.py
-│   ├── cli.py
-│   └── core.py
-├── tests/test_core.py
-├── .github/workflows/ci.yml
-├── README.md
-├── README_EN.md
-├── CONTRIBUTING.md
-├── CHANGELOG.md
-├── LICENSE
-├── .gitignore
-└── pyproject.toml
-```
-
-## 发布版本
-
-项目代码托管在 GitHub。准备发布新版本时：
-
-1. 确认 GitHub Actions 中的测试全部通过。
-2. 打开仓库的 [Releases](https://github.com/x549d/ai-netdoctor/releases) 页面，选择 **Draft a new release**。
-3. 创建或选择版本标签（例如 `v0.1.0`），目标分支选择 `main`。
-4. 填写版本说明，然后选择 **Publish release**。
-
-可选构建 wheel：
+| 参数 | 用法 |
+| --- | --- |
+| `--all` | 按 OpenAI、Claude、Gemini 的顺序逐一检查。 |
+| `--proxy URL` | 显式使用 `http://` 或 `https://` 代理地址。使用代理实际的主机和 HTTP/Mixed 端口；不支持 SOCKS。 |
+| `--timeout SECONDS` | 设置 DNS 等待、TCP 阶段及 HTTP 各操作的超时，默认 5 秒；必须是有限的正数。 |
+| `--json` | 输出一个 JSON 对象，替代终端文本报告。 |
 
 ```sh
-python -m pip wheel . --no-deps --wheel-dir dist
+ai-netdoctor check claude
+ai-netdoctor check openai --proxy http://127.0.0.1:7897
+ai-netdoctor check --all --proxy http://127.0.0.1:7897 --timeout 15
+ai-netdoctor check gemini --json
+ai-netdoctor check --all --json > report.json
 ```
 
-## 验证范围
+`7897` 只是示例，请替换为代理程序的实际 HTTP/Mixed 端口。Clash 等程序的 HTTP/Mixed 监听端口通常使用 `http://127.0.0.1:<端口>`，即使目标 API 使用 HTTPS 也是如此。
 
-包含 11 项离线模拟测试，覆盖 HTTP 状态语义、DNS/TCP/超时/代理/TLS 错误、凭证脱敏、参数和 JSON 输出。
-真实公网连通性取决于使用者网络环境，需自行运行诊断。
+### JSON 报告与退出码
 
-## License
+JSON 顶层包含 `version` 和 `results` 数组，即使只检查一个服务也使用相同结构。每个结果包含：
 
-MIT，见 [LICENSE](LICENSE)。
+- 目标与检查范围：`provider`、`target`、`url`、`proxy`、`probe_scope`、`probe_host`、`probe_port`。
+- UTC 时间戳：`timestamp`。
+- 分阶段结果：`steps`，每项包含 `stage`、`ok`、`message`、`elapsed_ms`、`explanation`、`possible_causes`、`recommended_actions`。
+- 总体判断与建议：`http_status`、`reachable`、`result`、`advice`、`recommended_actions`。未收到 HTTP 响应时，`http_status` 为 `null`。
 
-## 诊断结果详解与处理方法
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 所有目标都收到 HTTP 响应，且状态码不是 407；包括 4xx、5xx，不代表 API 调用成功。 |
+| 1 | 至少一个目标未收到 HTTP 响应，或收到 407，目标可达性未确认。 |
+| 2 | 参数错误；按错误提示检查服务名、代理 URL、超时值等。 |
+| 130 | 用户中断操作。 |
 
-每个阶段都会输出 **Explanation（结果解释）**、**Possible cause（可能原因）** 和 **Suggested action（建议操作）**。DNS/TCP 与 HTTPS 是独立观察；即使前两项失败，程序仍会单独尝试 HTTPS。
+## 诊断结果解释与逐项处理方法
+
+终端报告使用 **Explanation（结果解释）**、**Possible cause（可能原因）** 和 **Suggested action（建议操作）** 展示相应信息；正常阶段可能没有原因或操作建议。
+
+DNS/TCP 与 HTTPS 是独立观察。即使前两项失败，工具仍会单独尝试 HTTPS。瞬时故障可能导致结果不同，应结合最终 `Result` 或 JSON 中的 `reachable` 判断。HTTP 响应也可能来自中间网关，不能证明供应商 API 或模型可用。
 
 ### DNS：域名解析
-- **PASS — Resolved**：当前检查的主机名已解析为 IP。直连模式检查 API 域名；代理模式检查代理主机名。
-- **FAIL — DNS lookup timed out**：DNS 未在等待时间内返回。可能是 DNS 服务器不可用、VPN/防火墙干扰或网络暂时异常。检查网络和 DNS；Windows 可运行 `ipconfig /flushdns`，再用 `nslookup <hostname>` 测试，并尝试 `--timeout 15`。
-- **FAIL — DNS lookup failed**：系统无法解析主机名。检查域名/代理地址拼写和 DNS 过滤策略；用 `nslookup <hostname>` 查看结果。
+
+| 结果 | 解释与可能原因 | 处理方法 |
+| --- | --- | --- |
+| **PASS — Resolved** | 检查的主机名已解析为一个或多个 IP；代理模式下是代理主机。 | 继续查看 TCP 和 HTTPS 结果。 |
+| **FAIL — No addresses returned** | 解析器完成查询，但未返回可用 IP，可能缺少 DNS 记录或返回空结果。 | 核对主机名，运行 `nslookup <hostname>` 检查解析结果。 |
+| **FAIL — DNS lookup timed out** | 解析器未在等待时间内返回；DNS 服务器可能缓慢或不可达，VPN/防火墙也可能干扰。 | 检查网络和 DNS；Windows 可尝试 `ipconfig /flushdns`，再用 `nslookup <hostname>` 检查；使用 `--timeout 15` 重试。 |
+| **FAIL — DNS lookup failed** | 主机名不存在、临时解析失败、DNS 过滤或本机解析配置异常。 | 核对域名和代理地址拼写；检查 DNS/VPN 设置，稍后重试，必要时在获准的其他网络比较解析结果。 |
+
+将 `<hostname>` 替换为报告中的 `probe_host`；代理模式下应检查代理主机名。
 
 ### TCP：端口连接
-- **PASS — TCP connection established**：到检查主机和端口的 TCP 握手成功；不代表 HTTPS、认证或模型调用成功。
-- **FAIL — TCP connection failed or timed out**：DNS 有结果但 TCP 失败。直连模式检查防火墙、VPN/TUN、路由和目标端口；代理模式检查代理程序是否运行、HTTP/Mixed 端口是否正确，以及本机防火墙。
-- **FAIL — TCP not attempted**：DNS 没有返回 IP，先修复 DNS。
 
-Windows 可用以下命令检查端口（替换为报告中的主机和端口）：
+| 结果 | 解释与可能原因 | 处理方法 |
+| --- | --- | --- |
+| **PASS — TCP connection established** | 到检查主机和端口的 TCP 握手成功；不代表 HTTPS 或 API 认证成功。 | 继续查看 HTTPS。 |
+| **FAIL — TCP connection failed or timed out** | DNS 返回了地址，但 TCP 连接失败；可能被防火墙/路由阻止、目标不可达，或代理未启动、端口错误。 | 直连时检查防火墙、VPN/TUN、路由和 443 端口；代理模式下确认代理已运行、HTTP/Mixed 端口正确，并检查本机防火墙和代理上游。 |
+| **FAIL — TCP not attempted** | DNS 没有提供 IP，无法进行 TCP 检查。 | 先按 DNS 阶段的建议处理，再重试。 |
+
+Windows 可检查端口；将主机和端口替换为报告中的值：
+
 ```powershell
 Test-NetConnection api.openai.com -Port 443
 Test-NetConnection 127.0.0.1 -Port 7897
 ```
 
-### HTTPS：HTTP 状态码与错误
-- **2xx**：收到成功 HTTP 响应，但本工具不带 API Key，不能证明认证、额度或模型调用可用。
-- **301/302/3xx**：收到重定向，本工具不跟随。检查 API Base URL、代理/网关路径改写；若跳转到登录页，检查网络门户。
-- **400**：请求格式或端点不接受探测请求。核对路径、方法、API 版本和参数；本工具发送无认证 GET，端点不接受它不代表所有 API 调用都失败。
-- **401**：通常是预期结果，因为探测请求不携带 API Key。若自己的程序也返回 401，检查密钥是否存在/有效及认证 Header。不要把密钥发到公开 Issue 或报告。
-- **403**：服务器拒绝访问。检查账户/项目权限、区域或 IP 策略；使用代理/VPN 时核对出口 IP 是否被允许。
-- **404**：服务器有响应但探测路径不存在。核对服务商 API Base URL 和版本，并检查代理是否改写路径；这不是 DNS 故障。
-- **407**：代理要求身份验证，目标 API 是否可达尚未确认。检查代理认证、协议、地址和端口。Clash HTTP/Mixed 端口通常使用 `http://127.0.0.1:<端口>`，不要把 SOCKS-only 端口当作 HTTP 代理。
-- **429**：触发限流或额度策略。查看服务商控制台、重试提示、账单/额度，降低频率后重试。
-- **5xx**：服务端或网关错误。查看服务状态页，稍后重试；若只在代理线路出现，检查代理上游和网关。
-- **HTTPS timeout**：请求未在超时前完成。检查 DNS/TCP、代理上游和防火墙；尝试 `--timeout 15`，并在网络策略允许时比较直连和代理。
-- **Proxy / CONNECT error**：代理连接或 HTTPS 隧道失败。确认代理正在监听、URL 协议与端口正确、认证有效且上游可用。
-- **TLS verification / handshake failed**：TLS 握手或证书校验失败。检查系统日期时间、根证书和企业 HTTPS 检查设备；企业 TLS 拦截应配置组织提供的可信 CA。**不要关闭证书验证来绕过问题。**
-- **Remote protocol / other HTTPS error**：远端或中间网关可能重置连接或返回无效响应。重试一次，检查代理/网关日志，并在允许时比较其他网络路径。
+### HTTPS：HTTP 状态码
 
-### 结果解读注意事项
-1. 代理模式下，DNS/TCP 检查代理主机和端口；HTTPS 才是经代理请求目标 API。
-2. DNS/TCP 失败不必然意味着 HTTPS 失败，各阶段结果独立。
-3. HTTP 响应只证明某个端点作出了响应，不证明 API Key、权限、额度或模型推理可用。
-4. 报告不含 API Key，但可能包含主机名、解析 IP、代理地址和时间。分享前请脱敏；不要暴露代理凭证。
-5. 默认忽略环境变量代理；需要代理时显式传入 `--proxy`。
+**HTTPS 阶段的 PASS 只表示收到了 HTTP 响应。** 即使状态是 407，该阶段也可能显示 PASS，但总体结果仍会将目标可达性标记为未确认，并返回退出码 1。
+
+| 状态 | 解释与可能原因 | 处理方法 |
+| --- | --- | --- |
+| **2xx** | 收到成功 HTTP 响应；无认证探测不验证密钥、权限、额度或模型可用性。 | 若应用仍失败，检查应用自身的 API Key、认证 Header、项目权限、模型和请求格式。 |
+| **3xx（含 301/302）** | 收到重定向，工具不会跟随；可能是路径变化、网关改写或网络登录门户。 | 核对表中的固定探测地址与服务商文档，检查代理/网关改写规则；若跳转到登录页，完成网络接入认证。 |
+| **400** | 端点拒绝探测请求，可能不接受无认证 GET，或需要其他参数/Header。 | 对照服务商文档核对方法、路径、版本和参数；若应用也失败，检查应用请求。单次探测被拒不代表所有 API 调用不可用。 |
+| **401** | 通常是预期结果，因为工具不携带 API Key。 | 若只有探测返回 401，说明某个 HTTPS 端点已响应；若应用也返回 401，检查密钥是否有效及认证 Header 是否正确。不要公开密钥。 |
+| **403** | 服务器或网关拒绝访问；可能受 IP、区域、账户/项目权限或防火墙策略限制。 | 检查服务商访问政策、应用权限及代理/VPN 出口 IP；在政策允许时比较其他网络路径。 |
+| **404** | 服务器响应了，但探测路径不存在；可能是 API 版本变化或代理路径改写。 | 比较固定探测地址与服务商当前文档，检查网关改写。若应用请求正常，可能只是探测路径不受支持；这不是 DNS 故障。 |
+| **407** | 代理要求认证；目标 API 可达性未确认。 | 核对代理认证、协议、主机和端口，确认代理监听与上游连接正常。需要凭证时通过 `--proxy` URL 提供，并注意命令历史中的泄露风险；不要使用 SOCKS-only 端口。 |
+| **429** | 服务或网关触发限流或额度策略。 | 检查服务商控制台的限流、额度、账单及应用响应中的重试提示；降低频率/并发并按提示等待。网关返回时也检查网关策略。 |
+| **其他 4xx** | 端点拒绝请求，可能需要不同的方法、参数、Header 或访问策略。 | 查阅服务商文档；若应用也失败，检查应用的请求方法、路径、认证和参数。 |
+| **5xx** | 服务端或中间网关错误；收到响应不代表服务健康。 | 查看服务状态页并稍后重试；若只有代理线路失败，检查代理上游和网关。 |
+| **其他 HTTP 状态** | 某个 HTTP 端点已响应，状态可能具有服务商特定含义。 | 查阅对应状态说明，并结合应用响应检查认证、权限和请求格式。 |
+
+探测地址是固定的，当前命令不能修改 API Base URL、请求方法或 Header。上述核对用于定位问题，并指导检查应用或代理配置。
+
+### HTTPS：连接与协议错误
+
+| 结果 | 解释与可能原因 | 处理方法 |
+| --- | --- | --- |
+| **HTTPS request timed out** | HTTP 操作超时；目标或代理缓慢、不可达，或网络设备丢弃/延迟流量。 | 结合 DNS/TCP 结果检查网络、代理监听和上游；尝试 `--timeout 15`，并在政策允许时比较直连与代理。 |
+| **Proxy connection or CONNECT tunnel failed** | 代理连接或 HTTPS 隧道建立失败；可能是端口、协议、认证或上游配置错误。 | 确认代理运行且监听正确的 HTTP/Mixed 端口，核对 URL 协议和认证，检查代理路由及上游；用端口检查命令验证监听。 |
+| **TLS verification or handshake failed** | TLS 握手或证书校验失败；可能是系统时间错误、证书链不可信或企业 HTTPS 检查。 | 核对日期、时间和时区，检查证书链；企业网络请向管理员核实组织 CA 是否受当前 Python/HTTPX 信任配置支持，或使用获准且兼容的网络路径。本工具没有自定义 CA 选项，且忽略证书环境变量；不要关闭证书验证。 |
+| **HTTPS connection could not be established** | HTTPS 客户端无法连接目标或代理；可能是路由阻断、代理不可用或远端拒绝连接。 | 查看 DNS/TCP，检查防火墙、VPN/TUN、代理监听端口和上游路由。 |
+| **Remote server or gateway returned an invalid response** | 远端或中间设备关闭连接，或返回无效 HTTP 响应。 | 重试一次排除瞬时故障，检查代理/网关日志和路由模式，并在允许时比较其他网络。 |
+| **HTTPS connection failed** | 收到有效 HTTP 响应前请求失败，可能涉及网络、DNS、TLS、防火墙或代理。 | 结合前面阶段定位问题，检查相关配置；尝试 `--timeout 15` 并在允许时比较直连与代理。 |
+
+## 隐私与安全
+
+- 不读取 API Key，不发送模型推理请求，也不读取 HTTPS 响应正文。探测仍会连接目标服务或代理，对方可见连接 IP 和请求元数据。
+- 代理 URL 可包含用户名和密码；终端和 JSON 报告会移除它们，异常不会原样写入报告。命令行凭证仍可能出现在终端历史或本机进程参数中。
+- 报告包含域名、解析 IP、代理地址及时间戳。保存或分享前检查并按需脱敏，不要添加密钥或代理凭证。
+- HTTPS 保持证书验证。遇到 TLS 问题时检查信任配置或联系网络管理员，不要通过关闭验证绕过问题。
+
+## 限制与注意事项
+
+- HTTP 响应只表明某个端点响应，不证明供应商身份、API 健康、密钥、权限、额度或模型调用能力；中间网关也可能响应。
+- 默认忽略环境变量代理和 HTTPX 的证书环境变量（`trust_env=False`），包括 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`。需要代理时必须显式传入 `--proxy`；VPN/TUN、系统路由和透明代理仍可能影响连接。
+- 仅支持固定的三个服务地址及 HTTP(S) 代理，不支持 SOCKS、自定义目标 URL 或自定义 CA 命令选项。
+- 超时分别应用于 DNS 等待、TCP 阶段及 HTTP 各操作，不是整条命令的绝对总时限；`--all` 顺序执行，耗时会累加。
+- 系统原生 DNS 解析线程无法安全强制终止，极端情况下即使已报告 DNS 超时，进程退出仍可能等待解析器。
+- 结果反映运行时的网络状况；遇到间歇性故障可在允许的网络路径上重试比较。
+
+## 许可证
+
+本工具采用 [MIT 许可证](LICENSE)，按“原样”提供，不附带任何担保。
