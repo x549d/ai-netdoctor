@@ -40,16 +40,17 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(dns_args[:2], ("127.0.0.1", 7897))
         self.assertEqual(kwargs["proxy"], proxy)
         self.assertEqual(result["probe_scope"], "proxy")
-        self.assertNotIn("secret", json.dumps(result))
-        self.assertNotIn("alice", json.dumps(result))
+        serialized = json.dumps(result)
+        self.assertNotIn("proxy-user", serialized)
+        self.assertNotIn("pwd-marker-123", serialized)
 
     def test_timeout_is_explained_without_exception_text(self):
-        result, _, _ = self.run_probe(error=httpx.ConnectTimeout("secret"))
+        result, _, _ = self.run_probe(error=httpx.ConnectTimeout("timeout-secret-marker"))
         self.assertFalse(result["reachable"])
         self.assertIn("timed out", result["steps"][-1]["message"])
         self.assertTrue(result["steps"][-1]["explanation"])
         self.assertTrue(result["steps"][-1]["recommended_actions"])
-        self.assertNotIn("secret", json.dumps(result))
+        self.assertNotIn("timeout-secret-marker", json.dumps(result))
 
     def test_dns_failure_does_not_override_https_response(self):
         result, _, _ = self.run_probe(dns_error=socket.gaierror("unavailable"))
