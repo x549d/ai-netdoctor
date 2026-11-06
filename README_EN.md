@@ -88,6 +88,7 @@ The JSON object contains `version` and a `results` array, using the same structu
 - UTC timestamp: `timestamp`.
 - Stage results: `steps`, each with `stage`, `ok`, `message`, `elapsed_ms`, `explanation`, `possible_causes`, `recommended_actions`.
 - Overall assessment and guidance: `http_status`, `reachable`, `result`, `advice`, `recommended_actions`. If no HTTP response was received, `http_status` is `null`.
+- The optional `retry_after` string appears when the probe receives HTTP 429 with a usable `Retry-After`. Its value is a delay in seconds written with 1 to 10 digits (for example, `"120"`) or an HTTP date. This field is part of the unreleased update.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -141,7 +142,7 @@ Test-NetConnection 127.0.0.1 -Port 7897
 | **403** | The server or gateway refused access, possibly because of IP, regional, account/project permission, or firewall policies. | Check provider access policies, application permissions, and the proxy/VPN egress IP; compare other network paths where policies permit. |
 | **404** | The server responded, but the probe path was not found; the API version may have changed or a proxy may have rewritten the path. | Compare the fixed probe URL with current provider documentation and check gateway rewrites. If application requests work, only the probe path may be unsupported; this is not a DNS failure. |
 | **407** | The proxy requires authentication; target API reachability is unconfirmed. | Check proxy credentials, scheme, host, and port, and verify the listener and upstream. Supply credentials through the `--proxy` URL if needed, taking care with command-history exposure; do not use a SOCKS-only port. |
-| **429** | The service or gateway applied a rate-limit or quota policy. | Check provider dashboard limits, quota, billing, and retry hints in application responses. Reduce frequency/concurrency and wait as advised. If a gateway responded, check its policy too. |
+| **429** | The service or gateway applied a rate-limit or quota policy. | Follow `Retry-After` in the terminal report when shown. Otherwise, reduce request frequency or concurrency and retry later. Check the provider dashboard for rate limits, quota, and billing, or check the gateway policy. If your application also receives 429, check its own response for retry timing. |
 | **Other 4xx** | The endpoint rejected the request and may require different methods, parameters, headers, or access policies. | Consult provider documentation. If your application also fails, check its method, path, authentication, and parameters. |
 | **5xx** | The service or an intermediary gateway returned an error; a response does not mean the service is healthy. | Check the service-status page and retry later. If only the proxy route fails, inspect its upstream and gateway. |
 | **Other HTTP status** | An HTTP endpoint responded; the status may have a provider-specific meaning. | Consult the status documentation and use your application's response to check authentication, permissions, and request format. |
@@ -162,6 +163,7 @@ Probe URLs are fixed; the current command cannot change the API base URL, reques
 ## Privacy and Security
 
 - The tool does not read API keys, send model inference requests, or read HTTPS response bodies. Probes still connect to a target service or proxy, which can see the connection IP and request metadata.
+- Reports show a validated `Retry-After` only for HTTP 429. They omit missing, duplicate, or invalid values and all other response headers.
 - Proxy URLs can include usernames and passwords; these are removed from terminal and JSON reports, and exceptions are not copied verbatim into reports. Command-line credentials may still appear in terminal history or local process arguments.
 - Reports contain hostnames, resolved IPs, proxy addresses, and timestamps. Review and redact them before saving or sharing; do not add keys or proxy credentials.
 - HTTPS certificate verification stays enabled. For TLS problems, check trust configuration or contact your network administrator; do not bypass them by disabling verification.

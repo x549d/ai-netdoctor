@@ -52,6 +52,8 @@ def main(argv=None):
             for step in report["steps"]:
                 label = "PASS" if step["ok"] else "FAIL"
                 print(f"[{label}] {step['stage'].upper()}: {step['message']} ({step['elapsed_ms']} ms)")
+                if step["stage"] == "https" and "retry_after" in report:
+                    print(f"  Retry-After: {report['retry_after']}")
                 if step.get("explanation"):
                     print(f"  Explanation: {step['explanation']}")
                 for cause in step.get("possible_causes", []):
