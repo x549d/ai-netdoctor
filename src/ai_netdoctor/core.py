@@ -1,12 +1,14 @@
 """Independent DNS/TCP/HTTPS observations with actionable, key-free guidance."""
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
+from email.utils import parsedate_tz
+import json
 import math
 import re
 import socket
 import ssl
+import subprocess
+import sys
 import time
 from urllib.parse import urlsplit
 
@@ -24,11 +26,24 @@ _DAY_NAME = r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"
 _MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
 _TIME_OF_DAY = r"[0-9]{2}:[0-9]{2}:[0-9]{2}"
 _HTTP_DATE = re.compile(
-    rf"{_DAY_NAME}, [0-9]{{2}} {_MONTH} [0-9]{{4}} {_TIME_OF_DAY} GMT"
+    rf"{_DAY_NAME}, [0-9]{{2}} {_MONTH} (?P<imf_year>[0-9]{{4}}) {_TIME_OF_DAY} GMT"
     rf"|(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), "
-    rf"[0-9]{{2}}-{_MONTH}-[0-9]{{2}} {_TIME_OF_DAY} GMT"
-    rf"|{_DAY_NAME} {_MONTH} (?:[0-9]{{2}}| [0-9]) {_TIME_OF_DAY} [0-9]{{4}}"
+    rf"[0-9]{{2}}-{_MONTH}-(?P<short_year>[0-9]{{2}}) {_TIME_OF_DAY} GMT"
+    rf"|{_DAY_NAME} {_MONTH} (?:[0-9]{{2}}| [0-9]) {_TIME_OF_DAY} (?P<asctime_year>[0-9]{{4}})"
 )
+_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_DNS_LOOKUP = """
+import json
+import socket
+import sys
+
+try:
+    addresses = socket.getaddrinfo(sys.argv[1], int(sys.argv[2]), 0, socket.SOCK_STREAM)
+except socket.gaierror as exc:
+    print(json.dumps({"gaierror": exc.errno}))
+else:
+    print(json.dumps({"addresses": addresses}))
+"""
 
 
 def parse_proxy(value):
@@ -52,14 +67,24 @@ def parse_proxy(value):
 
 
 def _dns(host, port, timeout):
-    # The system resolver has no portable per-call timeout. Stop waiting after
-    # timeout; an unfinished native resolver thread can still delay process exit.
-    pool = ThreadPoolExecutor(max_workers=1)
-    future = pool.submit(socket.getaddrinfo, host, port, 0, socket.SOCK_STREAM)
+    # Keep the OS resolver's behavior while isolating the blocking native call
+    # in a process that subprocess.run kills and reaps on timeout.
     try:
-        return future.result(timeout=timeout)
-    finally:
-        pool.shutdown(wait=False, cancel_futures=True)
+        completed = subprocess.run(
+            [sys.executable, "-I", "-S", "-c", _DNS_LOOKUP, host, str(port)],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise TimeoutError("DNS lookup timed out.") from None
+    except subprocess.CalledProcessError:
+        raise OSError("DNS resolver process failed.") from None
+    result = json.loads(completed.stdout)
+    if "gaierror" in result:
+        raise socket.gaierror(result["gaierror"], "DNS lookup failed.")
+    return [
+        (family, socktype, proto, canonname, tuple(address))
+        for family, socktype, proto, canonname, address in result["addresses"]
+    ]
 
 
 def _step(name, ok, message, start, explanation="", possible_causes=(), recommended_actions=()):
@@ -92,13 +117,31 @@ def _safe_retry_after(headers):
     value = values[0].strip(" \t")
     if re.fullmatch(r"[0-9]{1,10}", value):
         return value
-    if _HTTP_DATE.fullmatch(value):
-        try:
-            parsedate_to_datetime(value)
-        except ValueError:
-            return None
-        return value
-    return None
+    match = _HTTP_DATE.fullmatch(value)
+    if not match:
+        return None
+    parsed = parsedate_tz(value)
+    if parsed is None:
+        return None
+    _, month, day, hour, minute, second = parsed[:6]
+    if match["short_year"] is not None:
+        # RFC 9110 interprets RFC 850's two-digit year against a 50-year window.
+        now = datetime.now(timezone.utc)
+        limit = now.year + 50
+        year = limit // 100 * 100 + int(match["short_year"])
+        if (year, month, day, hour, minute, second) > (
+            limit, now.month, now.day, now.hour, now.minute, now.second
+        ):
+            year -= 100
+    else:
+        year = int(match["imf_year"] or match["asctime_year"])
+    if year < 1900:
+        return None
+    try:
+        date = datetime(year, month, day, hour, minute, 59 if second == 60 else second)
+    except ValueError:
+        return None
+    return value if value[:3] == _WEEKDAYS[date.weekday()] else None
 
 
 def _status_guidance(status, retry_after=None):
@@ -214,6 +257,13 @@ def _status_guidance(status, retry_after=None):
             ],
         }
     if status >= 500:
+        retry_action = "Check the provider's service-status page and retry after a short interval."
+        if status == 503:
+            retry_action = (
+                "Wait for the interval or time shown under Retry-After before retrying."
+                if retry_after is not None
+                else "No usable Retry-After was provided for this probe. Check the provider's service-status page and retry later."
+            )
         return {
             "explanation": f"The server or an intermediary gateway returned HTTP {status}. The request reached an HTTP endpoint, but the service did not return a successful response.",
             "possible_causes": [
@@ -221,7 +271,7 @@ def _status_guidance(status, retry_after=None):
                 "An upstream gateway, reverse proxy, or network intermediary failure."
             ],
             "recommended_actions": [
-                "Check the provider's service-status page and retry after a short interval.",
+                retry_action,
                 "If the error persists, compare direct and proxy routes where permitted.",
                 "If only one network path fails, inspect the proxy or gateway upstream configuration."
             ],
@@ -260,6 +310,9 @@ def diagnose(provider, proxy=None, timeout=5.0):
         "probe_port": port,
         "steps": steps,
         "http_status": None,
+        "http_response_received": False,
+        "network_reachable": False,
+        "api_access_verified": False,
         "reachable": False,
         "result": "Target reachability not confirmed.",
         "advice": "Review the failed diagnostic stage and its recommended actions.",
@@ -284,7 +337,7 @@ def diagnose(provider, proxy=None, timeout=5.0):
                 ["The hostname may have no DNS records or the resolver returned an empty result."],
                 ["Check that the hostname is correct.", "Try resolving it with nslookup or your system's DNS diagnostic tool."]
             ))
-    except (FutureTimeout, socket.timeout):
+    except TimeoutError:
         steps.append(_step(
             "dns", False, "DNS lookup timed out.", start,
             "The system DNS resolver did not return an answer within the configured wait period.",
@@ -371,9 +424,11 @@ def diagnose(provider, proxy=None, timeout=5.0):
                           headers={"User-Agent": f"ai-netdoctor/{__version__}"}) as client:
             with client.stream("GET", url) as response:
                 status = response.status_code
-                retry_after = _safe_retry_after(response.headers) if status == 429 else None
+                retry_after = _safe_retry_after(response.headers) if status in (429, 503) else None
         report["http_status"] = status
-        report["reachable"] = status != 407
+        report["http_response_received"] = True
+        report["network_reachable"] = status != 407
+        report["reachable"] = report["network_reachable"]
         if retry_after is not None:
             report["retry_after"] = retry_after
         guidance = _status_guidance(status, retry_after)
