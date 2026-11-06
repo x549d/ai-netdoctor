@@ -1,0 +1,44 @@
+name: Feature request / 功能建议
+description: Suggest an improvement to AI NetDoctor / 提议改进 AI NetDoctor
+body:
+  - type: markdown
+    attributes:
+      value: Describe the need using synthetic or redacted examples. Omit API keys, tokens, proxy credentials, and private network details. 请使用合成或脱敏示例，省略 API Key、令牌、代理凭证和私有网络信息。
+  - type: input
+    id: request
+    attributes:
+      label: Requested feature / 建议的功能
+      description: Summarize the improvement in one sentence. 用一句话概括建议。
+    validations:
+      required: true
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case / 使用场景
+      description: Who would use it, and what are they trying to do? 谁会使用它，希望完成什么任务？
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Current problem / 当前问题
+      description: What gets in the way with the current tool or workflow? 现有工具或流程中有什么障碍？
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected outcome / 预期效果
+      description: What should users be able to do or see after this change? 改进后用户应能完成什么操作或看到什么结果？
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 考虑过的替代方案
+      description: Which alternatives or workarounds did you consider, and where did they fall short? 考虑过哪些替代方案或临时办法，它们有哪些不足？
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional information / 补充信息
+      description: Share relevant public links or a synthetic example if helpful. 如有帮助，可提供相关公开链接或合成示例。

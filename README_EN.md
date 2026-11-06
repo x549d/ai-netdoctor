@@ -190,9 +190,14 @@ Probe URLs are fixed; the current command cannot change the API base URL, reques
 - The DNS stage runs the system resolver in a child process and terminates and reaps it on timeout. Starting and cleaning up that process can add a small delay. The independent HTTPS connection can still exceed the configured timeout while performing its own system DNS lookup.
 - Results reflect network conditions at the time of the check. For intermittent problems, retry and compare permitted network paths.
 
-## Trial feedback
+## Contributing and feedback
 
-If you used AI NetDoctor on a real connection problem, share whether it helped narrow down the cause in the [trial feedback form](https://github.com/x549d/ai-netdoctor/issues/new?template=field-feedback.yml). Omit credentials, private IP addresses, hostnames, and proxy addresses.
+- Read the [contributing guide](CONTRIBUTING.md) for local tests and the PR process.
+- Read the [code of conduct](CODE_OF_CONDUCT.md) for community standards and conduct reporting.
+- Read the [security policy](SECURITY.md) for private vulnerability reporting.
+- File a [bug report](https://github.com/x549d/ai-netdoctor/issues/new?template=bug.yml) for a reproducible problem.
+- Open a [feature request](https://github.com/x549d/ai-netdoctor/issues/new?template=feature_request.yml) to explain a need, use case, and expected outcome.
+- Share [trial feedback](https://github.com/x549d/ai-netdoctor/issues/new?template=field-feedback.yml) about whether the tool helped narrow down a real connection problem.
 
 ## License
 
