@@ -23,6 +23,8 @@ In direct mode, DNS/TCP checks target the API hostname and port 443. With a prox
 
 ## Installation and Quick Start
 
+Download the latest wheel from [GitHub Releases](https://github.com/x549d/ai-netdoctor/releases/latest) and run `python -m pip install <wheel filename>` in the download directory.
+
 You need **Python 3.10 or later**. CI covers Python 3.10–3.13 on Linux, Windows, and macOS. On the [repository page](https://github.com/x549d/ai-netdoctor), choose **Code → Download ZIP** and extract it, or obtain a repository copy. Open a terminal in the directory containing `pyproject.toml`. Installation requires internet access to download build dependencies, HTTPX, and its dependencies.
 
 ### Windows / PowerShell
@@ -180,6 +182,10 @@ Probe URLs are fixed; the current command cannot change the API base URL, reques
 - Timeouts apply separately to DNS waiting, the TCP stage, and individual HTTP operations; they are not an absolute runtime limit for the entire command. `--all` runs sequentially, so durations add up.
 - The DNS stage runs the system resolver in a child process and terminates and reaps it on timeout. Starting and cleaning up that process can add a small delay. The independent HTTPS connection can still exceed the configured timeout while performing its own system DNS lookup.
 - Results reflect network conditions at the time of the check. For intermittent problems, retry and compare permitted network paths.
+
+## Trial feedback
+
+If you used AI NetDoctor on a real connection problem, share whether it helped narrow down the cause in the [trial feedback form](https://github.com/x549d/ai-netdoctor/issues/new?template=field-feedback.yml). Omit credentials, private IP addresses, hostnames, and proxy addresses.
 
 ## License
 

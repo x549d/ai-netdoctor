@@ -1,0 +1,25 @@
+name: Trial feedback / 试用反馈
+description: Tell us whether the tool helped diagnose a real connection problem / 反馈真实排查体验
+body:
+  - type: textarea
+    id: situation
+    attributes:
+      label: What were you trying to diagnose? / 你在排查什么？
+      description: Share the tool version, OS, provider, and direct or proxy mode. Omit credentials and private IPs, hostnames, and proxy addresses. 请说明工具版本、操作系统、服务商及连接模式，省略凭证和私有网络信息。
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Did the report help? / 报告是否有帮助？
+      options:
+        - Identified the cause / 找到了原因
+        - Narrowed down the problem / 缩小了排查范围
+        - Did not help / 没有帮助
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What helped or was unclear? / 哪些信息有帮助或不清楚？
+      description: A short description is enough. Use placeholders in any snippets. 简要描述即可，示例请使用占位符。
