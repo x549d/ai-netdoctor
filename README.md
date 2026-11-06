@@ -190,9 +190,14 @@ Test-NetConnection 127.0.0.1 -Port 7897
 - DNS 阶段在独立子进程中使用系统解析器，超时后终止并回收子进程。启动与清理子进程可能增加少量耗时。HTTPS 会独立连接，其内部的系统 DNS 查询仍可能超出设定时限。
 - 结果反映运行时的网络状况；遇到间歇性故障可在允许的网络路径上重试比较。
 
-## 试用反馈
+## 参与项目
 
-如果你用 AI NetDoctor 排查过真实的连接问题，欢迎通过 [试用反馈表单](https://github.com/x549d/ai-netdoctor/issues/new?template=field-feedback.yml) 告诉我们它是否帮助你缩小了排查范围。请省略凭证、私有 IP、主机名和代理地址。
+- [贡献指南](CONTRIBUTING.md)介绍本地测试和 PR 流程。
+- [社区行为准则](CODE_OF_CONDUCT.md)说明社区规范和违规举报流程。
+- [安全政策](SECURITY.md)说明如何私下报告漏洞。
+- [故障报告](https://github.com/x549d/ai-netdoctor/issues/new?template=bug.yml)用于提交可复现的问题。
+- [功能建议](https://github.com/x549d/ai-netdoctor/issues/new?template=feature_request.yml)用于说明需求、使用场景和预期效果。
+- [试用反馈](https://github.com/x549d/ai-netdoctor/issues/new?template=field-feedback.yml)用于分享工具在实际排查中是否帮助缩小了问题范围。
 
 ## 许可证
 
