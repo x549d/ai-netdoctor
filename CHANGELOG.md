@@ -1,11 +1,12 @@
 # Changelog
 
-## 0.1.0
+## Unreleased
 
-- Python CLI: OpenAI、Claude、Gemini 的 DNS、TCP、HTTPS 诊断。
-- 显式 HTTP(S) 代理，默认忽略环境变量代理。
-- 文本和 JSON 报告；不接收 API Key，不记录响应正文和代理凭证。
-- 离线测试、MIT License、GitHub Actions。
+- HTTP 429 诊断在终端和 JSON 报告中显示通过校验的 `Retry-After`，并在没有可用提示时给出重试建议。
 
-本压缩包是根据旧对话中的结构和功能范围重新创建的版本，
-并非旧临时文件的逐字节恢复。
+## v0.1.0
+
+- 首次发布 AI NetDoctor 命令行工具，支持单独或依次检查 OpenAI、Claude 和 Gemini API 的 DNS、TCP 和 HTTPS 连通性。
+- 支持直连和显式指定 HTTP(S) 代理，默认忽略环境变量中的代理设置。
+- 提供终端和 JSON 报告，包含分阶段耗时、HTTP 状态和排查建议。
+- 探测无需 API Key，报告会隐藏代理凭证，探测过程不读取响应正文。

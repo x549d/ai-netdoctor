@@ -2,7 +2,9 @@
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import math
+import re
 import socket
 import ssl
 import time
@@ -17,6 +19,16 @@ TARGETS = {
     "claude": ("Claude API", "https://api.anthropic.com/v1/models"),
     "gemini": ("Gemini API", "https://generativelanguage.googleapis.com/v1beta/models"),
 }
+
+_DAY_NAME = r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"
+_MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+_TIME_OF_DAY = r"[0-9]{2}:[0-9]{2}:[0-9]{2}"
+_HTTP_DATE = re.compile(
+    rf"{_DAY_NAME}, [0-9]{{2}} {_MONTH} [0-9]{{4}} {_TIME_OF_DAY} GMT"
+    rf"|(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), "
+    rf"[0-9]{{2}}-{_MONTH}-[0-9]{{2}} {_TIME_OF_DAY} GMT"
+    rf"|{_DAY_NAME} {_MONTH} (?:[0-9]{{2}}| [0-9]) {_TIME_OF_DAY} [0-9]{{4}}"
+)
 
 
 def parse_proxy(value):
@@ -72,7 +84,24 @@ def _tls_error(exc):
     return False
 
 
-def _status_guidance(status):
+def _safe_retry_after(headers):
+    """Allow one bounded delay or HTTP date without copying arbitrary header text."""
+    values = headers.get_list("Retry-After")
+    if len(values) != 1:
+        return None
+    value = values[0].strip(" \t")
+    if re.fullmatch(r"[0-9]{1,10}", value):
+        return value
+    if _HTTP_DATE.fullmatch(value):
+        try:
+            parsedate_to_datetime(value)
+        except ValueError:
+            return None
+        return value
+    return None
+
+
+def _status_guidance(status, retry_after=None):
     """Explain an HTTP response and suggest next steps without claiming API success."""
     if status == 200 or 200 <= status < 300:
         return {
@@ -124,6 +153,11 @@ def _status_guidance(status):
             ],
         }
     if status == 429:
+        retry_action = (
+            "Wait for the interval or time shown under Retry-After before retrying."
+            if retry_after is not None
+            else "No usable Retry-After was provided for this probe. Wait before retrying."
+        )
         return {
             "explanation": "The server or gateway returned a rate-limit or quota response. An HTTP endpoint was reached, but requests may be throttled.",
             "possible_causes": [
@@ -132,8 +166,9 @@ def _status_guidance(status):
                 "A gateway applies its own rate limit."
             ],
             "recommended_actions": [
-                "Check the response headers and provider dashboard for retry timing, rate limits, quota, and billing status.",
-                "Reduce request frequency or concurrency and retry after the indicated interval.",
+                retry_action,
+                "Reduce request frequency or concurrency and check the provider dashboard for rate limits, quota, and billing status.",
+                "If your application also receives HTTP 429, check its own response for retry timing.",
                 "If this response comes from a gateway, check that gateway's rate-limit policy."
             ],
         }
@@ -336,9 +371,12 @@ def diagnose(provider, proxy=None, timeout=5.0):
                           headers={"User-Agent": f"ai-netdoctor/{__version__}"}) as client:
             with client.stream("GET", url) as response:
                 status = response.status_code
+                retry_after = _safe_retry_after(response.headers) if status == 429 else None
         report["http_status"] = status
         report["reachable"] = status != 407
-        guidance = _status_guidance(status)
+        if retry_after is not None:
+            report["retry_after"] = retry_after
+        guidance = _status_guidance(status, retry_after)
         steps.append(_step(
             "https", True, f"HTTP {status}: response received.", start,
             guidance["explanation"], guidance["possible_causes"], guidance["recommended_actions"]

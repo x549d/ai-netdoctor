@@ -13,15 +13,17 @@ from ai_netdoctor.core import diagnose, parse_proxy
 
 
 class DiagnosticTests(unittest.TestCase):
-    def run_probe(self, status=401, error=None, proxy=None, dns_error=None, tcp_error=None):
+    def run_probe(self, status=401, error=None, proxy=None, dns_error=None, tcp_error=None, headers=None):
         with patch("ai_netdoctor.core._dns") as dns, patch("ai_netdoctor.core.socket.socket") as sock, patch("ai_netdoctor.core.httpx.Client") as client:
             dns.return_value = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
             dns.side_effect = dns_error
             sock.return_value.__enter__.return_value.connect.side_effect = tcp_error
             stream = client.return_value.__enter__.return_value.stream
             stream.side_effect = error
-            stream.return_value.__enter__.return_value.status_code = status
+            response = httpx.Response(status, headers=headers, stream=httpx.ByteStream(b"private-body-marker"))
+            stream.return_value.__enter__.return_value = response
             result = diagnose("openai", proxy, timeout=0.1)
+            self.assertFalse(response.is_stream_consumed)
             kwargs = client.call_args.kwargs
             dns_args = dns.call_args.args
         return result, kwargs, dns_args
@@ -96,6 +98,62 @@ class DiagnosticTests(unittest.TestCase):
         result, _, _ = self.run_probe(status=407)
         self.assertFalse(result["reachable"])
         self.assertIn("proxy requested authentication", result["steps"][-1]["explanation"].lower())
+
+    def test_429_reports_safe_retry_after(self):
+        for value, expected in (
+            (" 120\t", "120"),
+            ("0", "0"),
+            ("Sun, 06 Nov 1994 08:49:37 GMT", "Sun, 06 Nov 1994 08:49:37 GMT"),
+            ("Sunday, 06-Nov-94 08:49:37 GMT", "Sunday, 06-Nov-94 08:49:37 GMT"),
+            ("Sun Nov  6 08:49:37 1994", "Sun Nov  6 08:49:37 1994"),
+        ):
+            with self.subTest(value=value):
+                result, _, _ = self.run_probe(status=429, headers={"rEtRy-AfTeR": value})
+                self.assertEqual(result["retry_after"], expected)
+                self.assertTrue(result["reachable"])
+                self.assertIn("shown under Retry-After", result["recommended_actions"][0])
+
+    def test_429_omits_missing_or_unsafe_retry_after(self):
+        for values in (
+            [], [""], ["-1"], ["1.5"], ["9" * 11], ["120, 240"], ["120", "240"],
+            ["Sun, 99 Nov 1994 08:49:37 GMT"], ["Sun, 06 Nov 1994 08:49:37 GMT private-marker"],
+            ["120\r\nprivate-marker"], ["private-marker"],
+        ):
+            with self.subTest(values=values):
+                headers = [("Retry-After", value) for value in values]
+                result, _, _ = self.run_probe(status=429, headers=headers)
+                self.assertNotIn("retry_after", result)
+                self.assertIn("No usable Retry-After", result["recommended_actions"][0])
+                self.assertNotIn("private-marker", json.dumps(result))
+
+    def test_retry_after_is_only_reported_for_429(self):
+        result, _, _ = self.run_probe(status=503, headers={"Retry-After": "120"})
+        self.assertNotIn("retry_after", result)
+
+    def test_cli_429_outputs_retry_after_without_other_headers_or_body(self):
+        headers = {
+            "Retry-After": "120",
+            "Set-Cookie": "session=private-cookie-marker",
+            "Authorization": "Bearer private-token-marker",
+            "X-Request-ID": "private-request-marker",
+        }
+        result, _, _ = self.run_probe(status=429, headers=headers)
+        for as_json in (False, True):
+            with self.subTest(as_json=as_json):
+                args = ["check", "openai"]
+                if as_json:
+                    args.append("--json")
+                output = io.StringIO()
+                with patch("ai_netdoctor.cli.diagnose", return_value=result), redirect_stdout(output):
+                    code = main(args)
+                rendered = output.getvalue()
+                self.assertEqual(code, 0)
+                if as_json:
+                    self.assertEqual(json.loads(rendered)["results"][0]["retry_after"], "120")
+                else:
+                    self.assertIn("Retry-After: 120", rendered)
+                for secret in ("private-cookie-marker", "private-token-marker", "private-request-marker", "private-body-marker"):
+                    self.assertNotIn(secret, rendered)
 
     def test_each_step_has_structured_guidance_fields(self):
         result, _, _ = self.run_probe(status=401)
