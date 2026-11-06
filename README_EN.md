@@ -23,7 +23,7 @@ In direct mode, DNS/TCP checks target the API hostname and port 443. With a prox
 
 ## Installation and Quick Start
 
-You need **Python 3.10 or later**. On the [repository page](https://github.com/x549d/ai-netdoctor), choose **Code → Download ZIP** and extract it, or obtain a repository copy. Open a terminal in the directory containing `pyproject.toml`. Installation requires internet access to download build dependencies, HTTPX, and its dependencies.
+You need **Python 3.10 or later**. CI covers Python 3.10–3.13 on Linux, Windows, and macOS. On the [repository page](https://github.com/x549d/ai-netdoctor), choose **Code → Download ZIP** and extract it, or obtain a repository copy. Open a terminal in the directory containing `pyproject.toml`. Installation requires internet access to download build dependencies, HTTPX, and its dependencies.
 
 ### Windows / PowerShell
 
@@ -87,8 +87,11 @@ The JSON object contains `version` and a `results` array, using the same structu
 - Target and check scope: `provider`, `target`, `url`, `proxy`, `probe_scope`, `probe_host`, `probe_port`.
 - UTC timestamp: `timestamp`.
 - Stage results: `steps`, each with `stage`, `ok`, `message`, `elapsed_ms`, `explanation`, `possible_causes`, `recommended_actions`.
-- Overall assessment and guidance: `http_status`, `reachable`, `result`, `advice`, `recommended_actions`. If no HTTP response was received, `http_status` is `null`.
-- The optional `retry_after` string appears when the probe receives HTTP 429 with a usable `Retry-After`. Its value is a delay in seconds written with 1 to 10 digits (for example, `"120"`) or an HTTP date. This field is part of the unreleased update.
+- `http_response_received` indicates whether the HTTPS probe obtained an HTTP response, including a 407 returned by the HTTP client. Without a response, `http_status` is `null`. The client may report a proxy error if a proxy refuses to establish the CONNECT tunnel.
+- `network_reachable` is `true` when the HTTPS probe obtains a response other than 407. An intermediary gateway can also produce that response. The legacy `reachable` field keeps the same meaning and value.
+- `api_access_verified` is always `false` for this unauthenticated probe, including on 2xx. Verifying API access requires an authenticated request from your application.
+- `result`, `advice`, and `recommended_actions` provide the overall assessment and guidance.
+- HTTP 429 and 503 can include a `retry_after` string. The report shows it only for a single valid value, either a delay in seconds with 1 to 10 ASCII digits (such as `"120"`) or an HTTP date.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -101,7 +104,7 @@ The JSON object contains `version` and a `results` array, using the same structu
 
 The terminal report displays **Explanation**, **Possible cause**, and **Suggested action** where applicable; successful stages may have no causes or suggested actions.
 
-DNS/TCP and HTTPS are independent observations. HTTPS is attempted separately even when the first two stages fail. Transient failures can produce different results, so also read the final `Result` or JSON `reachable` value. An intermediary gateway may return the HTTP response; it does not prove the provider API or a model is available.
+DNS/TCP and HTTPS are independent observations. The tool attempts HTTPS separately even when the first two stages fail. Transient failures can produce different results, so also read the final `Result` or the JSON `network_reachable` field.
 
 ### DNS: Hostname Resolution
 
@@ -144,7 +147,8 @@ Test-NetConnection 127.0.0.1 -Port 7897
 | **407** | The proxy requires authentication; target API reachability is unconfirmed. | Check proxy credentials, scheme, host, and port, and verify the listener and upstream. Supply credentials through the `--proxy` URL if needed, taking care with command-history exposure; do not use a SOCKS-only port. |
 | **429** | The service or gateway applied a rate-limit or quota policy. | Follow `Retry-After` in the terminal report when shown. Otherwise, reduce request frequency or concurrency and retry later. Check the provider dashboard for rate limits, quota, and billing, or check the gateway policy. If your application also receives 429, check its own response for retry timing. |
 | **Other 4xx** | The endpoint rejected the request and may require different methods, parameters, headers, or access policies. | Consult provider documentation. If your application also fails, check its method, path, authentication, and parameters. |
-| **5xx** | The service or an intermediary gateway returned an error; a response does not mean the service is healthy. | Check the service-status page and retry later. If only the proxy route fails, inspect its upstream and gateway. |
+| **503** | The service or gateway is temporarily unable to handle the request. | Follow `Retry-After` when shown. Otherwise, check the service-status page and retry later. |
+| **Other 5xx** | The service or an intermediary gateway returned an error. | Check the service-status page and retry later. If only the proxy route fails, inspect its upstream and gateway. |
 | **Other HTTP status** | An HTTP endpoint responded; the status may have a provider-specific meaning. | Consult the status documentation and use your application's response to check authentication, permissions, and request format. |
 
 Probe URLs are fixed; the current command cannot change the API base URL, request method, or headers. These comparisons help locate problems and guide checks of application or proxy configuration.
@@ -163,7 +167,7 @@ Probe URLs are fixed; the current command cannot change the API base URL, reques
 ## Privacy and Security
 
 - The tool does not read API keys, send model inference requests, or read HTTPS response bodies. Probes still connect to a target service or proxy, which can see the connection IP and request metadata.
-- Reports show a validated `Retry-After` only for HTTP 429. They omit missing, duplicate, or invalid values and all other response headers.
+- Reports show a validated `Retry-After` only for HTTP 429 and 503. They omit missing, duplicate, or invalid values and all other response headers.
 - Proxy URLs can include usernames and passwords; these are removed from terminal and JSON reports, and exceptions are not copied verbatim into reports. Command-line credentials may still appear in terminal history or local process arguments.
 - Reports contain hostnames, resolved IPs, proxy addresses, and timestamps. Review and redact them before saving or sharing; do not add keys or proxy credentials.
 - HTTPS certificate verification stays enabled. For TLS problems, check trust configuration or contact your network administrator; do not bypass them by disabling verification.
@@ -174,7 +178,7 @@ Probe URLs are fixed; the current command cannot change the API base URL, reques
 - Environment proxy variables and HTTPX certificate environment variables are ignored by default (`trust_env=False`), including `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`. Pass `--proxy` explicitly when needed. VPN/TUN, system routing, and transparent proxies can still affect connections.
 - Only the three fixed service URLs and HTTP(S) proxies are supported. SOCKS, custom target URLs, and custom CA command options are not supported.
 - Timeouts apply separately to DNS waiting, the TCP stage, and individual HTTP operations; they are not an absolute runtime limit for the entire command. `--all` runs sequentially, so durations add up.
-- The operating system's native DNS resolver thread cannot be safely force-terminated. In rare cases, process exit may still wait for it after a DNS timeout is reported.
+- The DNS stage runs the system resolver in a child process and terminates and reaps it on timeout. Starting and cleaning up that process can add a small delay. The independent HTTPS connection can still exceed the configured timeout while performing its own system DNS lookup.
 - Results reflect network conditions at the time of the check. For intermittent problems, retry and compare permitted network paths.
 
 ## License

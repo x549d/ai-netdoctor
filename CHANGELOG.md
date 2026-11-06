@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## v0.1.1
 
-- HTTP 429 诊断在终端和 JSON 报告中显示通过校验的 `Retry-After`，并在没有可用提示时给出重试建议。
+- 在子进程中执行系统 DNS 检查，超时后终止并回收子进程。HTTPS 仍独立执行，其内部 DNS 查询不受 DNS 阶段超时控制。
+- HTTP 429 和 503 的终端与 JSON 报告支持单个有效的 `Retry-After` 值。缺失或无效时给出重试建议。
+- JSON 增加 `http_response_received`、`network_reachable` 和 `api_access_verified`，分别描述收到响应、网络可达和 API 访问验证情况。旧字段和 CLI 退出码保持兼容。
+- CI 使用 Node.js 24 版 Actions，在 Linux、Windows 和 macOS 上测试 Python 3.10–3.13 并构建 wheel。
 
 ## v0.1.0
 

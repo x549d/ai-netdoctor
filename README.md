@@ -23,7 +23,7 @@ AI NetDoctor 是一款轻量级 Python 命令行工具，用于排查访问 Open
 
 ## 安装与快速开始
 
-需要 **Python 3.10 或更高版本**。在 [仓库页面](https://github.com/x549d/ai-netdoctor) 选择 **Code → Download ZIP** 并解压，或获取仓库副本，然后进入包含 `pyproject.toml` 的目录。安装需要联网下载构建依赖、HTTPX 及其依赖。
+需要 **Python 3.10 或更高版本**。CI 在 Linux、Windows 和 macOS 上覆盖 Python 3.10–3.13。在 [仓库页面](https://github.com/x549d/ai-netdoctor) 选择 **Code → Download ZIP** 并解压，或获取仓库副本，然后进入包含 `pyproject.toml` 的目录。安装需要联网下载构建依赖、HTTPX 及其依赖。
 
 ### Windows / PowerShell
 
@@ -87,8 +87,11 @@ JSON 顶层包含 `version` 和 `results` 数组，即使只检查一个服务�
 - 目标与检查范围：`provider`、`target`、`url`、`proxy`、`probe_scope`、`probe_host`、`probe_port`。
 - UTC 时间戳：`timestamp`。
 - 分阶段结果：`steps`，每项包含 `stage`、`ok`、`message`、`elapsed_ms`、`explanation`、`possible_causes`、`recommended_actions`。
-- 总体判断与建议：`http_status`、`reachable`、`result`、`advice`、`recommended_actions`。未收到 HTTP 响应时，`http_status` 为 `null`。
-- 可选的 `retry_after` 字符串仅在探测收到 HTTP 429 且有可用的 `Retry-After` 时出现。值为 1 至 10 位数字表示的等待秒数（如 `"120"`），或 HTTP 日期。该字段属于尚未发布的更新。
+- `http_response_received` 表示 HTTPS 探测是否取得 HTTP 响应，包括客户端返回的 407。没有响应时，`http_status` 为 `null`。如果代理在建立 CONNECT 隧道时拒绝请求，HTTP 客户端可能只报告代理错误。
+- `network_reachable` 在 HTTPS 探测取得非 407 响应时为 `true`，响应也可能来自中间网关。旧字段 `reachable` 保持相同的含义和值。
+- `api_access_verified` 在当前无凭证探测中始终为 `false`，包括收到 2xx 时。验证实际 API 访问需要应用发起带凭证的请求。
+- `result`、`advice` 和 `recommended_actions` 提供总体判断与建议。
+- HTTP 429 和 503 可附带 `retry_after` 字符串。只有单个有效值才会显示，格式为 1 至 10 位 ASCII 数字表示的等待秒数（如 `"120"`），或 HTTP 日期。
 
 | 退出码 | 含义 |
 | --- | --- |
@@ -101,7 +104,7 @@ JSON 顶层包含 `version` 和 `results` 数组，即使只检查一个服务�
 
 终端报告使用 **Explanation（结果解释）**、**Possible cause（可能原因）** 和 **Suggested action（建议操作）** 展示相应信息；正常阶段可能没有原因或操作建议。
 
-DNS/TCP 与 HTTPS 是独立观察。即使前两项失败，工具仍会单独尝试 HTTPS。瞬时故障可能导致结果不同，应结合最终 `Result` 或 JSON 中的 `reachable` 判断。HTTP 响应也可能来自中间网关，不能证明供应商 API 或模型可用。
+DNS/TCP 与 HTTPS 是独立观察。即使前两项失败，工具仍会单独尝试 HTTPS。瞬时故障可能导致结果不同，应结合最终 `Result` 或 JSON 中的 `network_reachable` 判断。
 
 ### DNS：域名解析
 
@@ -144,7 +147,8 @@ Test-NetConnection 127.0.0.1 -Port 7897
 | **407** | 代理要求认证；目标 API 可达性未确认。 | 核对代理认证、协议、主机和端口，确认代理监听与上游连接正常。需要凭证时通过 `--proxy` URL 提供，并注意命令历史中的泄露风险；不要使用 SOCKS-only 端口。 |
 | **429** | 服务或网关触发限流或额度策略。 | 如果终端报告显示 `Retry-After`，按提示等待；没有可用提示时，降低请求频率或并发并稍后重试。检查服务商控制台的限流、额度和账单，或检查网关策略。如果应用也收到 429，请查看应用自身响应中的重试提示。 |
 | **其他 4xx** | 端点拒绝请求，可能需要不同的方法、参数、Header 或访问策略。 | 查阅服务商文档；若应用也失败，检查应用的请求方法、路径、认证和参数。 |
-| **5xx** | 服务端或中间网关错误；收到响应不代表服务健康。 | 查看服务状态页并稍后重试；若只有代理线路失败，检查代理上游和网关。 |
+| **503** | 服务或网关暂时无法处理请求。 | 如果报告显示 `Retry-After`，按提示等待；否则查看服务状态页并稍后重试。 |
+| **其他 5xx** | 服务端或中间网关错误；收到响应不代表服务健康。 | 查看服务状态页并稍后重试；若只有代理线路失败，检查代理上游和网关。 |
 | **其他 HTTP 状态** | 某个 HTTP 端点已响应，状态可能具有服务商特定含义。 | 查阅对应状态说明，并结合应用响应检查认证、权限和请求格式。 |
 
 探测地址是固定的，当前命令不能修改 API Base URL、请求方法或 Header。上述核对用于定位问题，并指导检查应用或代理配置。
@@ -163,7 +167,7 @@ Test-NetConnection 127.0.0.1 -Port 7897
 ## 隐私与安全
 
 - 不读取 API Key，不发送模型推理请求，也不读取 HTTPS 响应正文。探测仍会连接目标服务或代理，对方可见连接 IP 和请求元数据。
-- 仅在 HTTP 429 报告中显示通过校验的 `Retry-After`。缺失、重复或无效的值会省略，其他响应头也不会写入报告。
+- 仅在 HTTP 429 和 503 报告中显示通过校验的 `Retry-After`。缺失、重复或无效的值会省略，其他响应头也不会写入报告。
 - 代理 URL 可包含用户名和密码；终端和 JSON 报告会移除它们，异常不会原样写入报告。命令行凭证仍可能出现在终端历史或本机进程参数中。
 - 报告包含域名、解析 IP、代理地址及时间戳。保存或分享前检查并按需脱敏，不要添加密钥或代理凭证。
 - HTTPS 保持证书验证。遇到 TLS 问题时检查信任配置或联系网络管理员，不要通过关闭验证绕过问题。
@@ -174,7 +178,7 @@ Test-NetConnection 127.0.0.1 -Port 7897
 - 默认忽略环境变量代理和 HTTPX 的证书环境变量（`trust_env=False`），包括 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`。需要代理时必须显式传入 `--proxy`；VPN/TUN、系统路由和透明代理仍可能影响连接。
 - 仅支持固定的三个服务地址及 HTTP(S) 代理，不支持 SOCKS、自定义目标 URL 或自定义 CA 命令选项。
 - 超时分别应用于 DNS 等待、TCP 阶段及 HTTP 各操作，不是整条命令的绝对总时限；`--all` 顺序执行，耗时会累加。
-- 系统原生 DNS 解析线程无法安全强制终止，极端情况下即使已报告 DNS 超时，进程退出仍可能等待解析器。
+- DNS 阶段在独立子进程中使用系统解析器，超时后终止并回收子进程。启动与清理子进程可能增加少量耗时。HTTPS 会独立连接，其内部的系统 DNS 查询仍可能超出设定时限。
 - 结果反映运行时的网络状况；遇到间歇性故障可在允许的网络路径上重试比较。
 
 ## 许可证
