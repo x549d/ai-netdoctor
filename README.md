@@ -23,7 +23,14 @@ AI NetDoctor 是一款轻量级 Python 命令行工具，用于排查访问 Open
 
 ## 安装与快速开始
 
-可从 [GitHub Releases](https://github.com/x549d/ai-netdoctor/releases/latest) 下载最新 wheel，在下载目录运行 `python -m pip install <wheel 文件名>`。
+使用 Python 3.10 或更高版本，从 [PyPI](https://pypi.org/project/ai-netdoctor/) 安装后即可运行 CLI。
+
+```bash
+python -m pip install ai-netdoctor
+ai-netdoctor check openai
+```
+
+如果已安装 pipx，也可以运行 `pipx install ai-netdoctor`，让 CLI 使用独立的环境。[GitHub Releases](https://github.com/x549d/ai-netdoctor/releases/latest) 提供 wheel 下载。
 
 需要 **Python 3.10 或更高版本**。CI 在 Linux、Windows 和 macOS 上覆盖 Python 3.10–3.13。在 [仓库页面](https://github.com/x549d/ai-netdoctor) 选择 **Code → Download ZIP** 并解压，或获取仓库副本，然后进入包含 `pyproject.toml` 的目录。安装需要联网下载构建依赖、HTTPX 及其依赖。
 

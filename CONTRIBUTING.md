@@ -19,7 +19,7 @@ Describe the problem, user-visible change, and verification in the PR. Wait for 
 
 - Classify reports by DNS, TCP, TLS, HTTP, proxy, packaging, or docs. Record the tool version, connection mode, and first failing stage. Ask for a minimal, redacted reproduction when more detail is needed.
 - If using Codex to summarize an issue or CI failure, pass only reviewed excerpts or synthetic data. Keep private advisories, credentials, private addresses, and raw diagnostic reports out of model input. Review proposed labels, replies, tests, or fixes before applying them.
-- For GitHub automatic PR review, connect this repository in [Codex code review settings](https://chatgpt.com/codex/settings/code-review) and enable automatic reviews for the repository. Codex follows the rules in [AGENTS.md](AGENTS.md).
+- For GitHub automatic PR review, connect this repository in [Codex code review settings](https://chatgpt.com/settings/code-review) and enable automatic reviews for the repository. Codex follows the rules in [AGENTS.md](AGENTS.md).
 
 ## Release checklist
 

@@ -23,7 +23,14 @@ In direct mode, DNS/TCP checks target the API hostname and port 443. With a prox
 
 ## Installation and Quick Start
 
-Download the latest wheel from [GitHub Releases](https://github.com/x549d/ai-netdoctor/releases/latest) and run `python -m pip install <wheel filename>` in the download directory.
+Install from [PyPI](https://pypi.org/project/ai-netdoctor/) with Python 3.10 or later, then run the CLI.
+
+```bash
+python -m pip install ai-netdoctor
+ai-netdoctor check openai
+```
+
+If you already use pipx, `pipx install ai-netdoctor` installs the CLI in its own environment. Wheels are also available on [GitHub Releases](https://github.com/x549d/ai-netdoctor/releases/latest).
 
 You need **Python 3.10 or later**. CI covers Python 3.10–3.13 on Linux, Windows, and macOS. On the [repository page](https://github.com/x549d/ai-netdoctor), choose **Code → Download ZIP** and extract it, or obtain a repository copy. Open a terminal in the directory containing `pyproject.toml`. Installation requires internet access to download build dependencies, HTTPX, and its dependencies.
 
