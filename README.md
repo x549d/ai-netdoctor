@@ -23,6 +23,8 @@ AI NetDoctor 是一款轻量级 Python 命令行工具，用于排查访问 Open
 
 ## 安装与快速开始
 
+可从 [GitHub Releases](https://github.com/x549d/ai-netdoctor/releases/latest) 下载最新 wheel，在下载目录运行 `python -m pip install <wheel 文件名>`。
+
 需要 **Python 3.10 或更高版本**。CI 在 Linux、Windows 和 macOS 上覆盖 Python 3.10–3.13。在 [仓库页面](https://github.com/x549d/ai-netdoctor) 选择 **Code → Download ZIP** 并解压，或获取仓库副本，然后进入包含 `pyproject.toml` 的目录。安装需要联网下载构建依赖、HTTPX 及其依赖。
 
 ### Windows / PowerShell
@@ -180,6 +182,10 @@ Test-NetConnection 127.0.0.1 -Port 7897
 - 超时分别应用于 DNS 等待、TCP 阶段及 HTTP 各操作，不是整条命令的绝对总时限；`--all` 顺序执行，耗时会累加。
 - DNS 阶段在独立子进程中使用系统解析器，超时后终止并回收子进程。启动与清理子进程可能增加少量耗时。HTTPS 会独立连接，其内部的系统 DNS 查询仍可能超出设定时限。
 - 结果反映运行时的网络状况；遇到间歇性故障可在允许的网络路径上重试比较。
+
+## 试用反馈
+
+如果你用 AI NetDoctor 排查过真实的连接问题，欢迎通过 [试用反馈表单](https://github.com/x549d/ai-netdoctor/issues/new?template=field-feedback.yml) 告诉我们它是否帮助你缩小了排查范围。请省略凭证、私有 IP、主机名和代理地址。
 
 ## 许可证
 
