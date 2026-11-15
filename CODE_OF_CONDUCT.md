@@ -11,9 +11,9 @@ Everyone should be able to participate in AI NetDoctor without harassment or dis
 
 ## Private reports and review
 
-Send conduct reports to **[MAINTAINER TO ADD A PRIVATE CONDUCT REPORTING CHANNEL]**.
+Send conduct reports to **the maintainer (@x549d) via a private message on GitHub**.
 
-Describe what happened, when and where it occurred, and any relevant links or redacted evidence. Keep incident details out of public issues. If a report concerns the person who would normally receive it, use **[MAINTAINER TO ADD AN ALTERNATE PRIVATE REPORTING CHANNEL]**.
+Describe what happened, when and where it occurred, and any relevant links or redacted evidence. Keep incident details out of public issues. If a report concerns the person who would normally receive it, use **GitHub Support**.
 
 Maintainers are responsible for communicating these standards and reviewing reports promptly and fairly. A maintainer with a conflict of interest must step aside. Keep the reporter's identity and report details private, share information only as needed to handle the incident, and communicate the outcome where appropriate.
 
@@ -32,9 +32,9 @@ Maintainers may hide or remove harmful content and take proportionate action. De
 
 ### 私密举报与受理
 
-私密举报渠道为 **[待维护者填写私密行为准则举报渠道]**。
+私密举报渠道为 **通过 GitHub 私信联系维护者 @x549d**。
 
-请说明发生了什么、时间、地点，并附相关链接或脱敏证据。请勿在公开 Issue 中披露事件详情。如果举报涉及通常负责受理的人，请使用 **[待维护者填写备用私密举报渠道]**。
+请说明发生了什么、时间、地点，并附相关链接或脱敏证据。请勿在公开 Issue 中披露事件详情。如果举报涉及通常负责受理的人，请使用 **GitHub 支持**。
 
 维护者负责向社区说明行为规范，及时、公平地审查举报。存在利益冲突的维护者必须回避。保护举报人身份和报告详情，仅在处理事件所需的范围内共享信息，并在适当情况下告知处理结果。
 
